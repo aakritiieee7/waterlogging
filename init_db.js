@@ -2,11 +2,12 @@ const { Client } = require('pg');
 const fs = require('fs');
 const path = require('path');
 
-const connectionString = 'postgresql://postgres.amkocqxmizilimqjegdp:eVVlVePWcPHZVDtq@aws-1-ap-south-1.pooler.supabase.com:6543/postgres';
+const connectionString = process.env.DATABASE_URL || 'postgresql://postgres.amkocqxmizilimqjegdp:eVVlVePWcPHZVDtq@aws-1-ap-south-1.pooler.supabase.com:6543/postgres';
 
 async function setupDatabase() {
     const client = new Client({
-        connectionString: connectionString,
+        connectionString,
+        ssl: { rejectUnauthorized: false },
     });
 
     try {
