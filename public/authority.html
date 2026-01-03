@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Authority Dashboard - Delhi Waterlogging</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Emblem_of_India.svg/200px-Emblem_of_India.svg.png"
+                alt="Emblem of India">
+            <div>
+                <h1>Government of NCT of Delhi</h1>
+                <p style="margin:0; font-size: 0.8rem;">Authority Control Center</p>
+            </div>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Live Map</a></li>
+                <li><a href="#" onclick="logout()">Logout</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h2>Report Management Console</h2>
+        <div class="card" style="background: #f8f9fa;">
+            <div class="grid-2" style="grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                <div>
+                    <label>Filter by Authority</label>
+                    <select id="filter-authority">
+                        <option value="">All Authorities</option>
+                    </select>
+                </div>
+                <div>
+                    <label>Status</label>
+                    <select id="filter-status">
+                        <option value="">All Status</option>
+                        <option value="Open">Open</option>
+                        <option value="In Progress">In Progress</option>
+                        <option value="Resolved">Resolved</option>
+                    </select>
+                </div>
+                <div style="display: flex; align-items: flex-end;">
+                    <button onclick="loadReports()" class="btn btn-primary" style="width: 100%;">Apply Filter</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="reports-table-container">
+            <table style="width: 100%; border-collapse: collapse; background: white; margin-top: 1rem;">
+                <thead>
+                    <tr style="background: var(--primary-color); color: white;">
+                        <th style="padding: 12px; text-align: left;">ID</th>
+                        <th style="padding: 12px; text-align: left;">Title</th>
+                        <th style="padding: 12px; text-align: left;">Severity</th>
+                        <th style="padding: 12px; text-align: left;">Authority</th>
+                        <th style="padding: 12px; text-align: left;">Status</th>
+                        <th style="padding: 12px; text-align: left;">Action</th>
+                    </tr>
+                </thead>
+                <tbody id="reports-tbody">
+                    <!-- Reports will be injected here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Resolve Modal -->
+    <div id="resolve-modal"
+        style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+        <div class="card" style="width: 500px;">
+            <h3>Resolve Waterlogging Report</h3>
+            <form id="resolve-form">
+                <input type="hidden" id="resolve-report-id">
+                <div>
+                    <label>Resolution Summary</label>
+                    <textarea id="resolve-note" rows="4" required
+                        placeholder="Describe steps taken to resolve..."></textarea>
+                </div>
+                <div>
+                    <label>Proof of Resolution (Image)</label>
+                    <input type="file" id="resolve-proof-image" accept="image/*" required>
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                    <button type="submit" class="btn btn-success">Submit Proof & Resolve</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="authority.js"></script>
+</body>
+
+</html>

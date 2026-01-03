@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - Delhi Waterlogging Monitoring</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Emblem_of_India.svg/200px-Emblem_of_India.svg.png"
+                alt="Emblem of India">
+            <div>
+                <h1>Government of NCT of Delhi</h1>
+                <p style="margin:0; font-size: 0.8rem;">Waterlogging Monitoring & Response System</p>
+            </div>
+        </div>
+        <nav>
+            <ul id="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="reports.html">View Reports</a></li>
+                <li><a href="guidance.html">Citizen Guidance</a></li>
+                <li><a href="warning.html">Rainfall Warnings</a></li>
+                <li id="auth-link"><a href="login.html">Login / Register</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="container">
+        <h2>Public Reporting Dashboard</h2>
+        <p>Browse reports submitted by citizens and contribute by upvoting or commenting.</p>
+
+        <div class="grid-2">
+            <!-- List Scrollable -->
+            <div id="reports-list-container" class="card" style="max-height: 800px; overflow-y: auto;">
+                <h3>Active Reports</h3>
+                <div id="public-reports-list">
+                    Loading reports...
+                </div>
+            </div>
+
+            <!-- Detail View -->
+            <div id="side-panel">
+                <div class="card" id="detail-placeholder">
+                    <p style="text-align: center; color: #666;">Select a report from the list to view details, map
+                        location, and join the discussion.</p>
+                </div>
+
+                <div class="card" id="active-report-details" style="display: none;">
+                    <h3 id="detail-title">Report Details</h3>
+                    <div id="detail-map" style="height: 200px; margin-bottom: 10px; border: 1px solid #ddd;"></div>
+                    <p id="detail-desc"></p>
+                    <div class="grid-2" style="font-size: 0.9rem; gap: 10px;">
+                        <p><strong>Severity:</strong> <span id="detail-severity"></span></p>
+                        <p><strong>Status:</strong> <span id="detail-status"></span></p>
+                    </div>
+                    <p><strong>Authority Assigned:</strong> <span id="detail-authority"></span></p>
+
+                    <div id="detail-image-container"></div>
+
+                    <hr>
+                    <div id="upvote-section"
+                        style="display: flex; align-items: center; justify-content: space-between;">
+                        <button id="upvote-btn" class="btn btn-primary" style="flex: 1; margin-right: 10px;">
+                            👍 Trust/Upvote (<span id="upvote-count">0</span>)
+                        </button>
+                    </div>
+
+                    <h4>Community Comments</h4>
+                    <div id="comments-list"
+                        style="margin-bottom: 15px; max-height: 250px; overflow-y: auto; padding: 10px; background: #fdfdfd; border: 1px solid #eee;">
+                    </div>
+
+                    <div id="comment-form-container">
+                        <textarea id="new-comment" placeholder="Add your observation..." rows="2"></textarea>
+                        <button onclick="submitComment()" class="btn btn-success"
+                            style="width: 100%; margin-top: 5px;">Post Comment</button>
+                    </div>
+
+                    <div id="resolution-info"
+                        style="margin-top: 20px; padding: 15px; background: #e8f5e9; border-left: 5px solid #2e7d32; display: none;">
+                        <h4>✅ Resolution Proof</h4>
+                        <div id="resolution-proof-img"></div>
+                        <p id="resolution-note" style="font-style: italic;"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chatbot Toggle (Duplicated for consistency) -->
+    <button id="chatbot-toggle" class="btn btn-primary"
+        style="border-radius: 50%; width: 60px; height: 60px; font-size: 1.5rem;">💬</button>
+    <div id="chatbot-window">
+        <div id="chat-header">
+            <span>AI Help Desk</span>
+            <button onclick="toggleChat()"
+                style="background: none; border: none; color: white; cursor: pointer;">✖</button>
+        </div>
+        <div id="chat-messages">
+            <div class="message ai-message">Welcome to Delhi Waterlogging Help Desk. How can I assist you today?</div>
+        </div>
+        <div id="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type your question...">
+            <button onclick="sendMessage()" class="btn btn-primary">Send</button>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024 Government of NCT of Delhi. All Rights Reserved.</p>
+    </footer>
+
+    <script src="reports.js"></script>
+    <script>
+        // Common UI scripts
+        let currentUser = JSON.parse(localStorage.getItem('user'));
+        if (currentUser) {
+            document.getElementById('auth-link').innerHTML = `<a href="#" onclick="localStorage.clear(); location.reload();">Logout (${currentUser.username})</a>`;
+            if (currentUser.role === 'authority') {
+                document.getElementById('nav-links').innerHTML += `<li><a href="authority.html">Dashboard</a></li>`;
+            }
+        }
+    </script>
+</body>
+
+</html>

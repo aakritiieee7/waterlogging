@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Delhi Waterlogging System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Emblem_of_India.svg/200px-Emblem_of_India.svg.png"
+                alt="Emblem of India">
+            <div>
+                <h1>Government of NCT of Delhi</h1>
+                <p style="margin:0; font-size: 0.8rem;">Waterlogging Monitoring & Response System</p>
+            </div>
+        </div>
+        <nav>
+            <ul>
+                <li><a href="index.html">Home</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="container" style="max-width: 400px; margin-top: 5rem;">
+        <div class="card">
+            <h2 style="text-align: center;">Sign In</h2>
+            <form id="login-form">
+                <div>
+                    <label>Username</label>
+                    <input type="text" id="login-username" required>
+                </div>
+                <div>
+                    <label>Password</label>
+                    <input type="password" id="login-password" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Login</button>
+            </form>
+            <p style="text-align: center; margin-top: 1rem;">
+                No account? <a href="register.html">Register here</a>
+            </p>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('login-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const username = document.getElementById('login-username').value;
+            const password = document.getElementById('login-password').value;
+
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                localStorage.setItem('token', data.token);
+                localStorage.setItem('user', JSON.stringify(data.user));
+                if (data.user.role === 'authority') {
+                    window.location.href = 'authority.html';
+                } else {
+                    window.location.href = 'index.html';
+                }
+            } else {
+                alert(data.error);
+            }
+        };
+    </script>
+</body>
+
+</html>

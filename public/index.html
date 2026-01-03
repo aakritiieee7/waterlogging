@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Delhi Waterlogging Monitoring & Response System</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</head>
+
+<body>
+    <header>
+        <div class="logo">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c5/Emblem_of_India.svg/200px-Emblem_of_India.svg.png"
+                alt="Emblem of India">
+            <div>
+                <h1>Government of NCT of Delhi</h1>
+                <p style="margin:0; font-size: 0.8rem;">Waterlogging Monitoring & Response System</p>
+            </div>
+        </div>
+        <nav>
+            <ul id="nav-links">
+                <li><a href="index.html">Home</a></li>
+                <li><a href="reports.html">View Reports</a></li>
+                <li><a href="guidance.html">Citizen Guidance</a></li>
+                <li><a href="warning.html">Rainfall Warnings</a></li>
+                <li id="auth-link"><a href="login.html">Login / Register</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <div class="container">
+        <!-- Hero Section -->
+        <div class="card"
+            style="text-align: center; background: linear-gradient(135deg, #003366 0%, #004080 100%); color: white; border: none;">
+            <h2>Integrated Civic Reporting Platform</h2>
+            <p>Report waterlogging issues in your area and help authorities respond faster.</p>
+            <button class="btn btn-danger" onclick="scrollToReport()" id="report-btn-hero">Report Waterlogging</button>
+        </div>
+
+        <div class="grid-2">
+            <!-- Map Section -->
+            <div class="card">
+                <h3>Live Waterlogging Map</h3>
+                <p>Real-time reports and identified hotspots across Delhi.</p>
+                <div id="map"></div>
+                <div style="margin-top: 10px; display: flex; gap: 15px; font-size: 0.9rem;">
+                    <span><i style="background: red; width: 15px; height: 15px; display: inline-block;"></i>
+                        Hotspot</span>
+                    <span><i
+                            style="background: blue; width: 15px; height: 15px; display: inline-block; border-radius: 50%;"></i>
+                        Live Report</span>
+                </div>
+            </div>
+
+            <!-- Reporting Section / Details Section -->
+            <div id="side-panel">
+                <div class="card" id="report-form-container" style="display: none;">
+                    <h3>Create Waterlogging Report</h3>
+                    <form id="report-form">
+                        <div>
+                            <label>Title</label>
+                            <input type="text" id="report-title" placeholder="e.g. Heavy flooding near XYZ market"
+                                required>
+                        </div>
+                        <div>
+                            <label>Description</label>
+                            <textarea id="report-desc" rows="3" placeholder="Describe the situation..."
+                                required></textarea>
+                            <button type="button" id="btn-predict-ai" class="btn btn-primary"
+                                style="font-size: 0.7rem; margin-top: 5px; padding: 4px 8px;">✨ Suggest Authority with
+                                AI</button>
+                        </div>
+                        <div>
+                            <label>Severity</label>
+                            <select id="report-severity">
+                                <option value="Low">Low (Ankle deep)</option>
+                                <option value="Medium">Medium (Knee deep)</option>
+                                <option value="High">High (Waste deep/Car stuck)</option>
+                                <option value="Critical">Critical (Immediate danger/Evacuation needed)</option>
+                            </select>
+                        </div>
+                        <div class="grid-2" style="gap: 5px;">
+                            <div>
+                                <label>Latitude</label>
+                                <input type="text" id="report-lat" readonly required>
+                            </div>
+                            <div>
+                                <label>Longitude</label>
+                                <input type="text" id="report-lng" readonly required>
+                            </div>
+                        </div>
+                        <p style="font-size: 0.8rem; color: #666;">Location auto-captured from your device.</p>
+
+                        <div id="ai-prediction-box"
+                            style="background: #e9ecef; padding: 10px; margin-bottom: 10px; display: none; border-left: 5px solid var(--primary-color);">
+                            <strong>AI Suggested Authority:</strong> <span id="predicted-authority">Predicting...</span>
+                        </div>
+
+                        <div>
+                            <label>Authority (Manual Override if needed)</label>
+                            <select id="report-authority" required>
+                                <option value="">Select Authority</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>Upload Image (Optional)</label>
+                            <input type="file" id="report-image" accept="image/*">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit Official Report</button>
+                    </form>
+                </div>
+
+                <div class="card" id="welcome-card">
+                    <h3>Citizen Portal</h3>
+                    <p>Welcome to the official monitoring system. Please login to submit reports and interact with the
+                        community.</p>
+                    <a href="login.html" class="btn btn-primary" style="text-decoration: none;">Login to Report</a>
+                </div>
+
+                <div class="card" id="active-report-details" style="display: none;">
+                    <h3 id="detail-title">Report Details</h3>
+                    <p id="detail-desc"></p>
+                    <p><strong>Severity:</strong> <span id="detail-severity"></span></p>
+                    <p><strong>Status:</strong> <span id="detail-status"></span></p>
+                    <p><strong>Assigned to:</strong> <span id="detail-authority"></span></p>
+                    <div id="detail-image-container"></div>
+                    <hr>
+                    <div id="upvote-section">
+                        <button id="upvote-btn" class="btn btn-primary">Upvote (<span
+                                id="upvote-count">0</span>)</button>
+                    </div>
+                    <h4>Comments</h4>
+                    <div id="comments-list" style="margin-bottom: 10px; max-height: 200px; overflow-y: auto;"></div>
+                    <div id="comment-form-container">
+                        <textarea id="new-comment" placeholder="Add a comment..." rows="2"></textarea>
+                        <button onclick="submitComment()" class="btn btn-success btn-sm">Post</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chatbot UI -->
+    <button id="chatbot-toggle" class="btn btn-primary"
+        style="border-radius: 50%; width: 60px; height: 60px; font-size: 1.5rem;">💬</button>
+    <div id="chatbot-window">
+        <div id="chat-header">
+            <span>AI Help Desk</span>
+            <button onclick="toggleChat()"
+                style="background: none; border: none; color: white; cursor: pointer;">✖</button>
+        </div>
+        <div id="chat-messages">
+            <div class="message ai-message">Welcome to Delhi Waterlogging Help Desk. How can I assist you today?</div>
+        </div>
+        <div id="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Type your question...">
+            <button onclick="sendMessage()" class="btn btn-primary">Send</button>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2024 Government of NCT of Delhi. All Rights Reserved.</p>
+        <p>Managed by Delhi e-Governance Division.</p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
