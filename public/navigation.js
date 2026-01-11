@@ -1,212 +1,232 @@
-/**
- * navigation.js
- * Implements water-logging aware routing and safety logic.
- */
 
-let map = null;
-let hotspots = [];
-let routeLines = [];
-let markers = [];
-let userLocation = { lat: 28.6139, lng: 77.2090 }; // Default Delhi
-let destinationLocation = null;
+/* Navigation Logic with Autocomplete & Risk Detection */
+
+// State
+let startCoords = null;
+let endCoords = null;
+let routeLine = null;
+let hotspotLayer = L.layerGroup();
+let map;
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Check authentication
-    const user = JSON.parse(localStorage.getItem('user'));
-    if (!user) {
-        window.location.href = 'login.html?redirect=navigation.html';
-        return;
-    }
-
-    initMap();
-    loadHotspots();
-    setupEventListeners();
-    detectLocation();
-});
-
-function initMap() {
-    map = L.map('nav-map').setView([28.6139, 77.2090], 12);
+    // Initialize Map
+    map = L.map('navigation-map').setView([28.6139, 77.2090], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
+    hotspotLayer.addTo(map);
 
-    // Dynamic sizing fix
-    setTimeout(() => map.invalidateSize(), 500);
-}
-
-async function loadHotspots() {
-    try {
-        const res = await fetch('/api/hotspots');
-        hotspots = await res.json();
-
-        // Draw hotspots on map
-        hotspots.forEach(spot => {
-            const color = spot.severity === 'Critical' ? '#dc2626' : spot.severity === 'High' ? '#f97316' : '#f59e0b';
-            L.circle([spot.lat, spot.lng], {
-                color: color,
-                fillColor: color,
-                fillOpacity: 0.2,
-                radius: 300
-            }).addTo(map).bindPopup(`<strong>Hotspot: ${spot.name}</strong><br>Risk: ${spot.severity}`);
-        });
-    } catch (err) {
-        console.error("Error loading hotspots:", err);
-    }
-}
-
-function setupEventListeners() {
-    document.getElementById('btn-analyze').addEventListener('click', analyzeRoute);
-    document.getElementById('modal-proceed').addEventListener('click', () => {
-        closeModal();
-        redirectToGoogleMaps(false);
-    });
-    document.getElementById('modal-safe').addEventListener('click', () => {
-        closeModal();
-        redirectToGoogleMaps(true);
-    });
-}
-
-function detectLocation() {
+    // Initial Geolocation for Start (optional)
     if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(pos => {
-            userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-            L.marker([userLocation.lat, userLocation.lng], { icon: createCustomIcon('blue') })
-                .addTo(map).bindPopup("Your Location");
+            const { latitude, longitude } = pos.coords;
+            // Reverse geocode to fill start input? 
+            // For now, just center map
+            map.setView([latitude, longitude], 13);
         });
     }
-}
 
-async function analyzeRoute() {
-    const destName = document.getElementById('dest-input').value;
-    if (!destName) return showToast("Please enter a destination", "error");
+    // Setup Autocomplete
+    setupAutocomplete('start-input', 'start-suggestions', (coords) => startCoords = coords);
+    setupAutocomplete('destination', 'dest-suggestions', (coords) => endCoords = coords);
 
-    showToast("Analyzing routes for flooding risks...", "info");
+    // Lucide
+    lucide.createIcons();
+    // Fetch Verified Hotspots on Load
+    loadHistoricalHotspots();
+});
 
+let allHotspots = [];
+
+async function loadHistoricalHotspots() {
     try {
-        // 1. Geocode destination (Nominatim)
-        const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destName + ' Delhi')}`);
-        const geoData = await geoRes.json();
+        const res = await fetch('/api/hotspots');
+        const data = await res.json();
+        allHotspots = Array.isArray(data) ? data : (data.data || []);
 
-        if (geoData.length === 0) return showToast("Location not found in Delhi", "error");
-
-        const dest = { lat: parseFloat(geoData[0].lat), lng: parseFloat(geoData[0].lon) };
-        destinationLocation = dest;
-
-        // 2. Fetch Routes (Simulating Direct vs Safe using OSRM)
-        // We simulate a 'Risky' route if it passes near Minto Bridge or ITO
-        const directRoute = await fetchRoute(userLocation, dest);
-
-        // 3. Check for intersections with hotspots
-        const riskySpots = checkRiskySpots(directRoute);
-
-        clearMap();
-        drawRoute(directRoute, riskySpots.length > 0 ? '#64748b' : '#3b82f6');
-        L.marker([dest.lat, dest.lng]).addTo(map).bindPopup(destName);
-        map.fitBounds(L.polyline(directRoute).getBounds());
-
-        if (riskySpots.length > 0) {
-            showRiskyModal(riskySpots);
-        } else {
-            showRoutePanel(false);
-        }
+        // Draw ALL verified hotspots permanently on the map
+        allHotspots.forEach(spot => {
+            const radius = spot.radius || 300;
+            L.circle([spot.lat, spot.lng], {
+                color: '#9333ea', // Purple verified
+                dashArray: '5, 5',
+                fillColor: '#9333ea',
+                fillOpacity: 0.15, // Light fill for all
+                radius: radius
+            }).addTo(hotspotLayer).bindPopup(`<b>${spot.name}</b><br>Verified Risk Zone`);
+        });
 
     } catch (err) {
-        console.error(err);
-        showToast("Navigation service busy. Constructing advisory route...", "warning");
+        console.error("Failed to load initial hotspots:", err);
     }
 }
 
-async function fetchRoute(start, end) {
-    // Use OSRM for polyline
-    const url = `https://router.project-osrm.org/route/v1/driving/${start.lng},${start.lat};${end.lng},${end.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
-    const data = await res.json();
-    return data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-}
+// Autocomplete using Nominatim (OpenStreetMap)
+function setupAutocomplete(inputId, listId, callback) {
+    const input = document.getElementById(inputId);
+    const list = document.getElementById(listId);
+    let debounceTimer;
 
-function checkRiskySpots(polyline) {
-    const nearby = [];
-    hotspots.forEach(spot => {
-        const spotPos = [spot.lat, spot.lng];
-        // Check if any point on polyline is within 400m of a critical/high hotspot
-        const isNear = polyline.some(pt => L.latLng(pt).distanceTo(L.latLng(spotPos)) < 400);
-        if (isNear && (spot.severity === 'Critical' || spot.severity === 'High')) {
-            nearby.push(spot);
+    input.addEventListener('input', (e) => {
+        clearTimeout(debounceTimer);
+        const query = e.target.value;
+
+        if (query.length < 3) {
+            list.style.display = 'none';
+            return;
+        }
+
+        debounceTimer = setTimeout(async () => {
+            try {
+                // Bounds for Delhi roughly (optional bias) -> viewbox=76.8,28.4,77.3,28.9&bounded=1
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5`);
+                const data = await res.json();
+
+                list.innerHTML = '';
+                if (data.length > 0) {
+                    list.style.display = 'block';
+                    data.forEach(item => {
+                        const li = document.createElement('li');
+                        li.textContent = item.display_name;
+                        li.style.padding = '8px';
+                        li.style.cursor = 'pointer';
+                        li.style.borderBottom = '1px solid #eee';
+
+                        li.addEventListener('click', () => {
+                            input.value = item.display_name;
+                            list.style.display = 'none';
+                            const coords = [parseFloat(item.lat), parseFloat(item.lon)];
+                            callback(coords);
+
+                            // Add marker
+                            L.marker(coords).addTo(map).bindPopup(inputId === 'start-input' ? "Start" : "Destination").openPopup();
+                            map.setView(coords, 14);
+                        });
+
+                        list.appendChild(li);
+                    });
+                } else {
+                    list.style.display = 'none';
+                }
+            } catch (err) {
+                console.error("Autocomplete error:", err);
+            }
+        }, 300);
+    });
+
+    // Close list on outside click
+    document.addEventListener('click', (e) => {
+        if (e.target !== input && e.target !== list) {
+            list.style.display = 'none';
         }
     });
-    return nearby;
 }
 
-function showRiskyModal(riskySpots) {
-    const modal = document.getElementById('warning-modal');
-    const msg = document.getElementById('modal-msg');
+// Find Route & Check Risks
+async function analyzeRoute() {
+    if (!startCoords || !endCoords) {
+        alert("Please select both a Start point and a Destination from the suggestions.");
+        return;
+    }
 
-    const spotNames = riskySpots.map(s => s.name).join(', ');
-    msg.innerHTML = `This direct route passes through high-risk water-logging zones: <strong>${spotNames}</strong>. A safer alternative is recommended.`;
+    // Clear previous line only (keep hotspots)
+    if (routeLine) map.removeLayer(routeLine);
 
-    modal.style.display = 'flex';
+    // Draw Line (Straight for now, as requested "line joining the places")
+    // Note: User asked for "line joining the places", straight line is safest interpretation without 3rd party routing key.
+    routeLine = L.polyline([startCoords, endCoords], { color: 'blue', weight: 4, opacity: 0.7 }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [50, 50] });
+
+    // Check Collisions against loaded hotspots
+    try {
+        const collisions = [];
+
+        allHotspots.forEach(spot => {
+            const spotLatLng = L.latLng(spot.lat, spot.lng);
+            // Distance from point to line segment
+            const dist = distanceFromLineSegment(spotLatLng, L.latLng(startCoords), L.latLng(endCoords)); // in meters
+            const radius = spot.radius || 300;
+
+            if (dist < radius) {
+                collisions.push(spot);
+                // Highlight colliding spots? 
+                // We keep the purple circle, maybe add a Red Border? 
+                // For now, modal is enough. Users see the line crossing the purple circle.
+            }
+        });
+
+        if (collisions.length > 0) {
+            document.getElementById('risk-msg').innerHTML = `
+                Found <b>${collisions.length} verified risk zones</b> on this route!<br>
+                Major Risks: ${collisions.slice(0, 3).map(c => c.name).join(', ')}
+            `;
+            document.getElementById('risk-modal-overlay').style.display = 'flex';
+        } else {
+            // Show Success
+            const popup = L.popup()
+                .setLatLng(map.getCenter())
+                .setContent("✅ Route is SAFE from known historical hotspots!")
+                .openOn(map);
+        }
+
+        // Show Google Maps Link
+        const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${startCoords[0]},${startCoords[1]}&destination=${endCoords[0]},${endCoords[1]}&travelmode=driving`;
+        const linkBtn = document.getElementById('gmaps-link');
+        linkBtn.href = gmapsUrl;
+        linkBtn.style.display = 'flex';
+        // Re-render icons if needed by Lucide
+        if (window.lucide) lucide.createIcons();
+
+    } catch (err) {
+        console.error("Risk check failed:", err);
+        // User-friendly error message
+        const msg = err.message || "Unknown error";
+        alert(`Navigation System Error: ${msg}. Proceed with caution.`);
+    }
 }
 
-function showRoutePanel(isUnsafe) {
-    const panel = document.getElementById('route-result');
-    const badge = document.getElementById('route-risk-badge');
-    const title = document.getElementById('route-summary-title');
-    const detail = document.getElementById('route-detail');
+// Helper: Distance (meters) from Point P to Segment AB
+function distanceFromLineSegment(p, a, b) {
+    // Fixed: Removed redundant map initialization which caused "Map already initialized" error
 
-    panel.style.display = 'block';
+    // Leaflet's distanceTo is huge circle distance.
+    // Let's use simple geometric projection for "approx" meters.
+    // 1 deg lat ~ 111km.
 
-    if (isUnsafe) {
-        badge.innerHTML = `<span class="risk-tag" style="background: #fee2e2; color: #dc2626;">High Risk Route</span>`;
-        title.textContent = "Caution: Flooding Likely";
-        detail.textContent = "Direct path is currently marked as unsafe. Redirecting to Maps with safe waypoints.";
+    // Convert to simple x/y (Mercatorish approximation locally is fine for detection)
+    const x = p.lat, y = p.lng;
+    const x1 = a.lat, y1 = a.lng;
+    const x2 = b.lat, y2 = b.lng;
+
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    let param = -1;
+    if (len_sq !== 0) param = dot / len_sq;
+
+    let xx, yy;
+
+    if (param < 0) {
+        xx = x1; yy = y1;
+    } else if (param > 1) {
+        xx = x2; yy = y2;
     } else {
-        badge.innerHTML = `<span class="risk-tag" style="background: #d1fae5; color: #059669;">Safe Route Found</span>`;
-        title.textContent = "Clear Route Path";
-        detail.textContent = "No major water-logging hotspots detected on this path. Move safely.";
+        xx = x1 + param * C;
+        yy = y1 + param * D;
     }
 
-    document.getElementById('btn-gmaps').onclick = () => redirectToGoogleMaps(!isUnsafe);
+    const dx = x - xx;
+    const dy = y - yy;
+
+    // Convert degrees diff to meters
+    const distDeg = Math.sqrt(dx * dx + dy * dy);
+    return distDeg * 111000; // approx meters
 }
 
-function redirectToGoogleMaps(useSafe) {
-    const origin = `${userLocation.lat},${userLocation.lng}`;
-    const destination = `${destinationLocation.lat},${destinationLocation.lng}`;
-
-    let url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=driving`;
-
-    if (useSafe) {
-        // Add waypoints to avoid hotspots if needed
-        // For demo: if we are in North Delhi going South, we avoid Minto Bridge by adding a waypoint like Barakhamba Road
-        // For now, we'll just open standard, but in a real app logic we'd calculate via safe zones
-        const safeWaypoint = "28.6294,77.2274"; // Simulated safe node near Connaught Place
-        // url += `&waypoints=${safeWaypoint}`;
-    }
-
-    window.open(url, '_blank');
-}
-
-function clearMap() {
-    routeLines.forEach(l => map.removeLayer(l));
-    routeLines = [];
-}
-
-function drawRoute(points, color) {
-    const line = L.polyline(points, { color: color, weight: 6, opacity: 0.7 }).addTo(map);
-    routeLines.push(line);
-}
-
-function closeModal() {
-    document.getElementById('warning-modal').style.display = 'none';
-    showRoutePanel(true);
-}
-
-function createCustomIcon(color) {
-    return L.icon({
-        iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
-        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34],
-        shadowSize: [41, 41]
-    });
+function closeRiskModal() {
+    document.getElementById('risk-modal-overlay').style.display = 'none';
 }

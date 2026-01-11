@@ -26,8 +26,9 @@ function initializeMap() {
         maxZoom: 18
     }).addTo(map);
 
-    // Create layer for markers
-    markersLayer = L.layerGroup().addTo(map);
+    // Create layer for markers using Canvas renderer for performance with 1000+ points
+    // This enables "Google Maps Traffic" style density visualization
+    markersLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
 }
 
 function setupEventListeners() {
@@ -78,10 +79,12 @@ async function loadPredictions() {
 
     try {
         // Fetch predictions for the selected date
-        const response = await fetch(`${API_BASE}/api/predictions/date/${dateInput}`);
+        // Use relative path to avoid CORS/Hostname issues
+        const response = await fetch(`/api/predictions/date/${dateInput}`);
 
         if (!response.ok) {
-            throw new Error('Failed to fetch predictions');
+            const errText = await response.text();
+            throw new Error(errText || 'Failed to fetch predictions');
         }
 
         const data = await response.json();
@@ -100,7 +103,7 @@ async function loadPredictions() {
 
     } catch (error) {
         console.error('Error loading predictions:', error);
-        showError('Failed to load predictions. The data may not be available for this date.');
+        alert(`Error: ${error.message}`);
     } finally {
         showLoading(false);
     }

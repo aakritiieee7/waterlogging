@@ -1,10 +1,10 @@
 {
   "model_version": "v2.0.0",
-  "trained_at": "2026-01-11T00:42:11.778579",
+  "trained_at": "2026-01-11T22:26:38.560142",
   "metrics": {
-    "precision": 1.0,
-    "recall": 1.0,
-    "f1_score": 1.0
+    "precision": 0.9970678786101744,
+    "recall": 0.9992653540993242,
+    "f1_score": 0.9981654069127468
   },
   "feature_names": [
     "rainfall_24h",
@@ -25,44 +25,44 @@
   ],
   "feature_importance": [
     {
-      "feature": "rainfall_24h",
-      "importance": 1.0
-    },
-    {
       "feature": "rainfall_squared",
-      "importance": 0.0
+      "importance": 0.8419008255004883
     },
     {
-      "feature": "rainfall_log",
-      "importance": 0.0
-    },
-    {
-      "feature": "rainfall_intensity_num",
-      "importance": 0.0
-    },
-    {
-      "feature": "lat",
-      "importance": 0.0
-    },
-    {
-      "feature": "lng",
-      "importance": 0.0
-    },
-    {
-      "feature": "elevation_proxy",
-      "importance": 0.0
+      "feature": "rainfall_24h",
+      "importance": 0.05546299368143082
     },
     {
       "feature": "min_dist_to_risk_zone_km",
-      "importance": 0.0
+      "importance": 0.04124436154961586
+    },
+    {
+      "feature": "lat",
+      "importance": 0.030649680644273758
+    },
+    {
+      "feature": "lng",
+      "importance": 0.015981711447238922
+    },
+    {
+      "feature": "elevation_proxy",
+      "importance": 0.013630347326397896
+    },
+    {
+      "feature": "month_cos",
+      "importance": 0.00035201458376832306
     },
     {
       "feature": "day_of_year",
-      "importance": 0.0
+      "importance": 0.00027104580658487976
     },
     {
-      "feature": "month",
-      "importance": 0.0
+      "feature": "day_cos",
+      "importance": 0.00027064941241405904
+    },
+    {
+      "feature": "day_sin",
+      "importance": 0.00023634797253180295
     }
   ]
 }

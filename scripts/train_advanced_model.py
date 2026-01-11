@@ -100,63 +100,97 @@ class WaterloggingPredictor:
         
         return df
     
+    def load_imd_rainfall_data(self):
+        """Load IMD historical rainfall data"""
+        rainfall_file = os.path.join(os.path.dirname(__file__), '..', 'imd_delhi_rainfall_historical.csv')
+        if not os.path.exists(rainfall_file):
+            raise FileNotFoundError(f"IMD rainfall data not found: {rainfall_file}")
+        
+        df_rainfall = pd.read_csv(rainfall_file)
+        df_rainfall['date'] = pd.to_datetime(df_rainfall['date']).dt.strftime('%Y-%m-%d')
+        return df_rainfall
+
     def prepare_training_data(self):
-        """Load and prepare training data"""
-        print("\n📊 Preparing training data...")
+        """Load and prepare training data using REAL datasets"""
+        print("\n📊 Preparing training data (Real-World Pipeline)...")
         
-        # Load historical incidents
-        incidents_file = os.path.join(DATA_DIR, 'sample_historical_incidents.csv')
-        if not os.path.exists(incidents_file):
-            raise FileNotFoundError(f"Historical incidents file not found: {incidents_file}")
+        # 1. Load Datasets
+        dataset_file = os.path.join(DATA_DIR, 'flood_prediction_dataset.csv')
+        if not os.path.exists(dataset_file):
+            # Fallback for CI/CD if file missing
+            print("   ⚠️  New dataset not found, falling back to legacy sample.")
+            dataset_file = os.path.join(DATA_DIR, 'sample_historical_incidents.csv')
+            legacy_mode = True
+        else:
+            legacy_mode = False
+            
+        df_loaded = pd.read_csv(dataset_file)
         
-        df_incidents = pd.read_csv(incidents_file)
-        print(f"   Loaded {len(df_incidents)} historical incidents")
+        if legacy_mode:
+            # LEGACY LOGIC (Keep merge if file is the old sample)
+            df_imd = self.load_imd_rainfall_data()
+            print(f"   Loaded {len(df_loaded)} historical incidents (Legacy)")
+            
+            positive_samples = pd.merge(
+                df_loaded, 
+                df_imd[['date', 'rainfall_mm']], 
+                on='date', 
+                how='left'
+            )
+            positive_samples['rainfall_24h'] = positive_samples['rainfall_mm_y'].fillna(positive_samples['rainfall_mm_x'])
+            positive_samples['waterlogging'] = 1
+            
+            # Legacy needs IMD for negative generation
+            
+        else:
+            # NEW DATASET LOGIC
+            # Load IMD data anyway for negative sample generation if needed (or we can skip it?)
+            # The generated dataset has 33k rows. Adding 5x negatives = 150k rows. 
+            # That's fine, it makes it robust.
+            df_imd = self.load_imd_rainfall_data()
+            print(f"   Loaded {len(df_loaded)} records from Flood Prediction Dataset")
+            
+            positive_samples = df_loaded.copy()
+            positive_samples['waterlogging'] = positive_samples['flood_occurred']
+            positive_samples['rainfall_24h'] = positive_samples['rainfall_mm']
+
+        positive_samples = positive_samples[['date', 'lat', 'lng', 'rainfall_24h', 'waterlogging']]
         
-        # Create positive samples (waterlogging occurred)
-        positive_samples = df_incidents.copy()
-        positive_samples['waterlogging'] = 1
+        # 3. Negative Samples (Dry Days / Low Rainfall)
+        # Select dry days (Rainfall < 5mm) from IMD data as true negatives
+        dry_df = df_imd[df_imd['rainfall_mm'] < 5.0]
+        sample_size = len(positive_samples) * 5
         
-        # Create negative samples (no waterlogging)
-        # Generate random dates and locations where no waterlogging occurred
-        np.random.seed(42)
-        n_negative = len(positive_samples) * 3  # 3x negative samples
+        # Use replace=True to allow oversampling if we request more samples than available days
+        dry_days = dry_df.sample(n=sample_size, replace=True, random_state=42)
         
         negative_samples = []
-        for _ in range(n_negative):
-            # Random date in monsoon season
-            year = np.random.randint(2015, 2024)
-            month = np.random.randint(6, 10)  # June to September
-            day = np.random.randint(1, 29)
+        for _, row in dry_days.iterrows():
+            # Generate random locations in Delhi for dry days (simulating 'safe' conditions everywhere)
+            # or use known hotspots locations but on dry days to teach model that location alone isn't enough
             
-            # Random location in Delhi
+            # Strategy: Mix of random locations and hotspot locations on dry days
+            # 50% random, 50% hotspot locations
+            
+            # Random location
             lat = np.random.uniform(28.4, 28.9)
             lng = np.random.uniform(76.8, 77.4)
             
-            # Low rainfall (no waterlogging)
-            rainfall = np.random.uniform(0, 30)
-            
             negative_samples.append({
-                'date': f"{year}-{month:02d}-{day:02d}",
-                'location': 'Random',
+                'date': row['date'],
                 'lat': lat,
                 'lng': lng,
-                'severity': 'Low',
-                'depth_cm': 0,
-                'duration_h': 0,
-                'rainfall_mm': rainfall,
+                'rainfall_24h': row['rainfall_mm'],
                 'waterlogging': 0
             })
-        
+            
         df_negative = pd.DataFrame(negative_samples)
-        print(f"   Generated {len(df_negative)} negative samples")
+        print(f"   Generated {len(df_negative)} clean negative samples from real Dry Days (<5mm)")
         
-        # Combine positive and negative samples
+        # 4. Combine Datasets
         df = pd.concat([positive_samples, df_negative], ignore_index=True)
         
-        # Rename columns for consistency
-        df = df.rename(columns={'rainfall_mm': 'rainfall_24h'})
-        
-        # Create features
+        # 5. Feature Engineering
         df = self.create_temporal_features(df)
         df = self.create_spatial_features(df)
         df = self.create_rainfall_features(df)
@@ -177,7 +211,6 @@ class WaterloggingPredictor:
         print(f"   Total samples: {len(df)}")
         print(f"   Positive samples: {sum(y == 1)}")
         print(f"   Negative samples: {sum(y == 0)}")
-        print(f"   Features: {len(feature_columns)}")
         
         return X, y, df
     

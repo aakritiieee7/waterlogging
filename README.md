@@ -54,4 +54,4 @@ Use these accounts to explore the different roles in the system:
 
 ## ☁️ Deployment
 
-For instructions on how to deploy this application to the cloud (Vercel), please refer to **[DEPLOY.md](DEPLOY.md)**.
+For instructions on show to deploy this application to the cloud (Vercel), please refer to **[DEPLOY.md](DEPLOY.md)**.

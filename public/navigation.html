@@ -8,6 +8,41 @@
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        .suggestions-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            border: 1px solid #e2e8f0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            position: absolute;
+            z-index: 1000;
+            width: 100%;
+            display: none;
+            border-radius: 0 0 8px 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .suggestions-list li {
+            padding: 10px 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: #1e293b;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .suggestions-list li:hover {
+            background-color: #f8fafc;
+            color: #2563eb;
+        }
+
+        .input-group {
+            position: relative;
+            margin-bottom: 1.5rem;
+        }
+    </style>
 </head>
 
 <body>
@@ -33,19 +68,28 @@
             <h2>Find Safest Route</h2>
             <div class="input-group">
                 <label>Starting Point</label>
-                <input type="text" value="My Current Location" disabled>
+                <input type="text" id="start-input" placeholder="Type starting location (e.g. Rohini)"
+                    autocomplete="off">
+                <ul id="start-suggestions" class="suggestions-list"></ul>
             </div>
             <div class="input-group">
                 <label>Destination</label>
-                <input type="text" id="destination" placeholder="Enter destination (e.g. Minto Bridge)">
+                <input type="text" id="destination" placeholder="Type destination (e.g. Minto Bridge)"
+                    autocomplete="off">
+                <ul id="dest-suggestions" class="suggestions-list"></ul>
             </div>
             <button class="find-route-btn" onclick="analyzeRoute()">
                 <i data-lucide="navigation"></i> Find Safest Route
             </button>
             <p style="font-size: 0.8rem; color: #64748b; margin-top: 1.5rem; line-height: 1.4;">
-                <strong>Disclaimer:</strong> This feature is advisory. Please follow official traffic police
-                instructions and road closures during heavy rainfall.
+                <strong>Disclaimer:</strong> This feature uses AI predictions to identify risk zones along the direct
+                path.
             </p>
+
+            <a id="gmaps-link" href="#" target="_blank" class="find-route-btn"
+                style="display:none; margin-top: 1rem; background-color: #4285F4; text-align: center; text-decoration: none;">
+                <i data-lucide="map-pin"></i> Open in Google Maps
+            </a>
         </aside>
 
         <section class="navigation-map-wrapper">
@@ -62,46 +106,14 @@
                 recommended.</p>
             <div class="modal-actions">
                 <button class="modal-btn modal-btn-secondary" onclick="closeRiskModal()">Go Anyway</button>
-                <button class="modal-btn modal-btn-primary" onclick="closeRiskModal()">Use Safe Route</button>
+                <button class="modal-btn modal-btn-primary" onclick="closeRiskModal()">Acknowledge</button>
             </div>
         </div>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="navbar.js"></script>
-    <script>
-        // Use Lucide icons
-        lucide.createIcons();
-
-        // Initialize Map
-        const map = L.map('navigation-map').setView([28.6139, 77.2090], 12);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-        function analyzeRoute() {
-            const dest = document.getElementById('destination').value;
-            if (!dest) {
-                showToast('Please enter a destination', 'warning');
-                return;
-            }
-
-            // Simulate route analysis with a small delay
-            showToast('Analyzing optimal route for water-logging issues...', 'info', 2000);
-
-            setTimeout(() => {
-                if (dest.toLowerCase().includes('minto') || dest.toLowerCase().includes('ridge')) {
-                    document.getElementById('risk-msg').innerText = "This direct route passes through high-risk water-logging zones: Minto Bridge, Dhaula Kuan Underpass. A safer alternative is recommended.";
-                    document.getElementById('risk-modal-overlay').style.display = 'flex';
-                } else {
-                    showToast('Safest route found! No major water-logging on this path.', 'success');
-                }
-            }, 1000);
-        }
-
-        function closeRiskModal() {
-            document.getElementById('risk-modal-overlay').style.display = 'none';
-            showToast('Route updated to avoid water-logged zones.', 'success');
-        }
-    </script>
+    <script src="navigation.js"></script>
 </body>
 
 </html>

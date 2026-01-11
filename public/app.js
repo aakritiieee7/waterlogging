@@ -49,16 +49,67 @@ function initMap() {
 // Geolocation logic moved to submit.js
 
 async function loadHotspots() {
-    const res = await fetch('/api/hotspots');
-    hotspots = await res.json();
-    hotspots.forEach(h => {
-        L.circle([h.lat, h.lng], {
-            color: 'red',
-            fillColor: '#f03',
-            fillOpacity: 0.5,
-            radius: 500
-        }).addTo(map);
-    });
+    // 1. Static Verified Hotspots
+    try {
+        const res = await fetch('/api/hotspots');
+        hotspots = await res.json();
+        hotspots.forEach(h => {
+            // Use purple for historical verified spots
+            L.circle([h.lat, h.lng], {
+                color: '#9333ea',
+                fillColor: '#9333ea',
+                fillOpacity: 0.2,
+                radius: 300,
+                dashArray: '5, 5'
+            }).addTo(map).bindPopup("<b>Verified Hotspot</b><br>" + h.name);
+        });
+    } catch (e) { console.error("Static hotspots error", e); }
+
+    // 2. Dynamic High-Risk Predictions (Traffic Corridors)
+    try {
+        const today = new Date().toISOString().split('T')[0];
+        const predRes = await fetch(`/api/predictions/date/${today}`);
+        const predData = await predRes.json();
+
+        let highRiskCount = 0;
+
+        if (predData.hotspots) {
+            predData.hotspots.forEach(h => {
+                if (h.confidence > 0.8) { // >80% Risk Score
+                    highRiskCount++;
+                    // Red Buffer Zone (Traffic Avoidance)
+                    L.circle([h.lat, h.lng], {
+                        color: 'red',
+                        fillColor: '#ef4444',
+                        fillOpacity: 0.4,
+                        radius: 500, // 500m buffer
+                        weight: 2
+                    }).addTo(map).bindPopup(`
+                        <b>⛔ TRAFFIC DIVERSION SUGGESTED</b><br>
+                        High Flood Risk: ${Math.round(h.confidence * 100)}%<br>
+                        Avoid this route.
+                    `);
+
+                    // Draw Geometry lines (Simulated corridor)
+                    // L.polyline(...) could be added here if we had road data
+                }
+            });
+        }
+
+        if (highRiskCount > 0) {
+            // UI Alert for Traffic
+            const alertDiv = document.createElement('div');
+            alertDiv.style.cssText = "position:absolute; top:80px; left:50%; transform:translateX(-50%); background:#ef4444; color:white; padding:10px 20px; border-radius:30px; z-index:9999; font-weight:bold; box-shadow:0 4px 15px rgba(220,38,38,0.4); animation: pulse 2s infinite;";
+            alertDiv.innerHTML = `🚨 TRAFFIC POLICE ALERT: ${highRiskCount} Zones marked for Diversion`;
+            document.body.appendChild(alertDiv);
+
+            // Add pulse animation
+            const style = document.createElement('style');
+            style.innerHTML = `@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.8; } 100% { opacity: 1; } }`;
+            document.head.appendChild(style);
+        }
+
+    } catch (e) { console.error("Prediction fetch error", e); }
 }
 
 async function loadReports() {

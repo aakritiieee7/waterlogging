@@ -6,6 +6,7 @@ const { GoogleGenerativeAI } = require('@google/generative-ai');
 const db = require('./db');
 const path = require('path');
 const multer = require('multer');
+const { spawn } = require('child_process');
 
 const app = express();
 const PORT = 3000;
@@ -326,10 +327,53 @@ app.get('/api/predictions/date/:date', async (req, res) => {
     const { date } = req.params;
 
     try {
-        const result = await db.query(
+        let result = await db.query(
             'SELECT * FROM predicted_hotspots WHERE prediction_date = $1 ORDER BY confidence_score DESC',
             [date]
         );
+
+        // If no data exists, generate it on-demand
+        if (result.rows.length === 0) {
+            console.log(`ℹ️ No predictions found for ${date}. Generating on-demand...`);
+
+            try {
+                // Determine script path
+                const scriptPath = path.join(__dirname, '../scripts/predict_for_date.py');
+
+                // Returns a promise that resolves when the script completes
+                const runScript = () => new Promise((resolve, reject) => {
+                    // Determine Python executable path (prefer venv)
+                    // Use absolute path to ensure robustness
+                    const venvPython = '/Users/aakritirajhans/waterlogging-3/waterlogging/venv/bin/python';
+
+                    const pythonExec = require('fs').existsSync(venvPython) ? venvPython : 'python3';
+
+                    console.log(`[Server] Generating prediction using: ${pythonExec}`);
+
+                    const process = spawn(pythonExec, [scriptPath, date]);
+
+                    process.stdout.on('data', (data) => console.log(`[Python]: ${data}`));
+                    process.stderr.on('data', (data) => console.error(`[Python Err]: ${data}`));
+
+                    process.on('close', (code) => {
+                        if (code === 0) resolve();
+                        else reject(new Error(`Script exited with code ${code}`));
+                    });
+                });
+
+                await runScript();
+
+                // Re-fetch data after generation
+                result = await db.query(
+                    'SELECT * FROM predicted_hotspots WHERE prediction_date = $1 ORDER BY confidence_score DESC',
+                    [date]
+                );
+
+            } catch (genErr) {
+                console.error('⚠️ On-demand generation failed:', genErr);
+                // We continue to return empty result rather than 500, so the UI doesn't crash
+            }
+        }
 
         const hotspots = result.rows.map(row => ({
             id: row.id,
@@ -469,13 +513,55 @@ app.post('/api/predictions/generate', authenticateToken, async (req, res) => {
         return res.status(400).json({ error: 'Date is required' });
     }
 
-    // In production, this would trigger a background job
-    // For now, we'll just return a success message
-    res.json({
-        message: 'Prediction generation triggered',
-        date: date,
-        status: 'pending',
-        note: 'Run: python scripts/predict_for_date.py ' + date
+    // Trigger real-time Python inference
+    console.log(`🚀 Triggering prediction for ${date}...`);
+    const scriptPath = path.join(__dirname, '../scripts/predict_for_date.py');
+
+    // Determine Python executable path (prefer venv)
+    const venvPython = process.platform === 'win32'
+        ? path.join(__dirname, '../venv/Scripts/python.exe')
+        : path.join(__dirname, '../venv/bin/python');
+
+    const fs = require('fs');
+    const pythonExec = fs.existsSync(venvPython) ? venvPython : 'python3';
+
+    console.log(`   Using Python: ${pythonExec}`);
+
+    // Spawn Python process
+    const pythonProcess = spawn(pythonExec, [scriptPath, date]);
+
+    let scriptOutput = '';
+    let scriptError = '';
+
+    pythonProcess.stdout.on('data', (data) => {
+        const text = data.toString();
+        scriptOutput += text;
+        console.log(`[Python]: ${text}`);
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+        const text = data.toString();
+        scriptError += text;
+        console.error(`[Python API Error]: ${text}`);
+    });
+
+    pythonProcess.on('close', (code) => {
+        console.log(`Python script finished with code ${code}`);
+
+        if (code === 0) {
+            res.json({
+                message: 'Detailed prediction analysis generated successfully',
+                date: date,
+                status: 'success',
+                model_output: 'Database updated with new hotspots.'
+            });
+        } else {
+            res.status(500).json({
+                error: 'Prediction generation failed',
+                status: 'error',
+                debug_info: scriptError
+            });
+        }
     });
 });
 
