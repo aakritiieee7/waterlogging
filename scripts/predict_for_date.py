@@ -27,8 +27,60 @@ class DateBasedPredictor:
     def __init__(self):
         self.model_data = None
         self.verified_hotspots = []
+        self.known_locations = [] # Will be populated
         self.load_model()
         self.load_verified_hotspots()
+        self.init_drainage_map()
+
+    def init_drainage_map(self):
+        """Initialize drainage capacity map"""
+        # (lat, lng, name, drainage_capacity_mm)
+        self.known_locations = [
+            (28.6330, 77.2285, "Minto Bridge", 25),     
+            (28.6304, 77.2425, "ITO Crossing", 35),     
+            (28.5910, 77.1610, "Dhaula Kuan", 45),      
+            (28.6139, 76.9830, "Najafgarh", 25),        
+            (28.6675, 77.2282, "Kashmere Gate", 40),    
+            (28.5244, 77.2618, "Okhla", 30),            
+            (28.6436, 77.1565, "Shadipur", 35),
+            (28.5355, 77.1420, "Munirka", 45),
+            (28.7041, 77.1025, "Pitampura", 55),        
+            (28.5494, 77.2117, "Green Park", 60),       
+            (28.6219, 77.0878, "Janakpuri", 55),
+            (28.5550, 77.2562, "Kalkaji", 45),
+            (28.5273, 77.2177, "Saket", 60),
+            (28.6406, 77.3060, "Preet Vihar", 50),
+            (28.6505, 77.1711, "Pushta Road", 20),      
+            (28.6288, 77.2847, "Laxmi Nagar", 30),      
+            (28.5700, 77.3200, "Noida Sec-18 Area", 40),
+            (28.4595, 77.0266, "Gurgaon Cyber City Area", 45),
+            (28.7000, 77.2800, "Shahdara", 30),
+            (28.6900, 77.1900, "Model Town", 55),
+            (28.6000, 77.2300, "Lodhi Road", 75),       
+            (28.5800, 77.2300, "Jangpura", 50),
+            (28.5500, 77.2000, "Hauz Khas", 65),
+            (28.5200, 77.2300, "Khanpur", 35),
+            (28.4900, 77.3000, "Badarpur", 35),
+            (28.6400, 77.1200, "Kirti Nagar", 50),
+            (28.6700, 77.1200, "Punjabi Bagh", 55),
+            (28.7300, 77.1100, "Rohini", 55),
+            (28.6100, 77.0400, "Dwarka", 60),           
+            (28.5900, 77.0700, "Palam", 40),
+            (28.6300, 77.3400, "Vaishali", 45),
+            (28.6500, 77.3700, "Indirapuram", 45),
+            (28.7500, 77.2000, "Burari", 25),           
+            (28.6600, 77.2100, "Civil Lines", 65),
+            (28.6400, 77.2100, "Paharganj", 30),
+            (28.6200, 77.2000, "Connaught Place", 80),  
+            (28.5900, 77.1900, "Chanakyapuri", 85),     
+            (28.5700, 77.1700, "RK Puram", 60),
+            (28.5400, 77.1600, "Vasant Vihar", 70),
+            (28.5300, 77.1200, "Mahipalpur", 35),
+            (28.6800, 77.0600, "Nangloi", 30),
+            (28.6600, 77.0300, "Peeragarhi", 35),
+            (28.6200, 77.1000, "Mayapuri", 40),
+            (28.4800, 77.1800, "Chattarpur", 35)
+        ]
     
     def load_model(self):
         """Load trained model"""
@@ -205,8 +257,6 @@ class DateBasedPredictor:
              }
         
         # Fallback: FINAL SAFETY NET
-        # If everything fails (CSV, DB, API), return a safe deterministic value.
-        # Do NOT use random numbers, as it creates confusion.
         print("   ⚠️  All data sources failed. Using safety fallback.")
         
         date_obj = datetime.strptime(target_date, '%Y-%m-%d')
@@ -340,27 +390,49 @@ class DateBasedPredictor:
         
         df_grid['risk_score'] = prob_ensemble
         
-        # --- Task 3: Geospatial Vulnerability Logic ---
-        # Apply 1.4x multiplier if within 500m of verified hotspot
+        current_rain = rainfall_data['rainfall_24h']
+        
+        def apply_drainage_physics(row):
+            lat, lng = row['lat'], row['lng']
+            risk = row['risk_score']
+            
+            # Get capacity
+            capacity = self.get_drainage_capacity(lat, lng)
+            
+            # Physics:
+            # If Rain < Capacity: The drains swallow the water. Flood risk is minimal.
+            if current_rain < capacity:
+                # Strong reduction. Even if model sees "rain" and predicts risk, 
+                # the infrastructure cancels it out.
+                # We reduce risk by 80% (factor 0.2)
+                return risk * 0.2
+            else:
+                # Rainfall exceeds capacity.
+                # Risk stands, or typically increases as overflow grows.
+                # The model already predicts high risk for high rain.
+                # We can add a small penalty for the overflow amount?
+                # excess = current_rain - capacity
+                # boost = 1.0 + (excess / 100.0)
+                # return min(risk * boost, 1.0)
+                return risk
+
+        df_grid['risk_score'] = df_grid.apply(apply_drainage_physics, axis=1)
+
+        
         if self.verified_hotspots:
-            print("   Applying Historical Vulnerability Index (1.4x multiplier)...")
             verified_coords = np.array([[h['lat'], h['lng']] for h in self.verified_hotspots])
             
             def apply_vulnerability_multiplier(row):
                 risk = row['risk_score']
                 lat, lng = row['lat'], row['lng']
                 
-                # Simple distance check (optimization: KDTree would be faster for large grids, but loop ok for <200 spots)
-                # 0.005 degrees approx 500m
                 distances = np.sqrt((verified_coords[:,0] - lat)**2 + (verified_coords[:,1] - lng)**2)
                 min_dist_deg = np.min(distances)
                 
-                # If within ~500m (0.0045 deg)
                 if min_dist_deg < 0.0045: 
-                    # Stronger multiplier to highlight known chronic spots
                     risk = risk * 2.5
                     
-                return min(risk, 1.0) # Cap at 1.0
+                return min(risk, 1.0)
             
             df_grid['risk_score'] = df_grid.apply(apply_vulnerability_multiplier, axis=1)
         
@@ -443,28 +515,8 @@ class DateBasedPredictor:
             # Reverse geocode
             name = self.get_location_name(center_lat, center_lng)
             
-            # RESOURCE DISPATCH LOGIC (Predictive Logistics)
-            # Find nearest Pumping Station for rapid de-watering
-            pump_stations = [
-                {"id": "PUMP_DL_01", "name": "Minto Bridge Pump House", "lat": 28.6330, "lng": 77.2285},
-                {"id": "PUMP_DL_02", "name": "ITO Central Pump", "lat": 28.6280, "lng": 77.2430},
-                {"id": "PUMP_DL_03", "name": "Okhla STP Pumping", "lat": 28.5450, "lng": 77.2730},
-                {"id": "PUMP_DL_04", "name": "Najafgarh Drain Pump", "lat": 28.6139, "lng": 76.9830},
-                {"id": "PUMP_DL_05", "name": "Kashmere Gate Pump Stn", "lat": 28.6675, "lng": 77.2282},
-                {"id": "PUMP_DL_06", "name": "Ring Road Pumping Stn", "lat": 28.5700, "lng": 77.2300}
-            ]
-            
-            nearest_pump = None
-            min_pump_dist = float('inf')
-            
-            for pump in pump_stations:
-                dist = np.sqrt((center_lat - pump['lat'])**2 + (center_lng - pump['lng'])**2) * 111 # km
-                if dist < min_pump_dist:
-                    min_pump_dist = dist
-                    nearest_pump = pump
-            
-            # Estimate Response Time (20 km/h average speed in heavy rain)
-            response_time_mins = (min_pump_dist / 20.0) * 60 + 10 # +10 mins dispatch time
+            # Estimate Response Time
+            response_time_mins = (min_pump_dist / 20.0) * 60 + 10
             
             # Risk factors & Logistics
             risk_factors = {
@@ -505,58 +557,62 @@ class DateBasedPredictor:
     def get_location_name(self, lat, lng):
         """Get location name from coordinates (simplified)"""
         # Dictionary of major Delhi areas with approximate coordinates
-        known_locations = [
-            (28.6330, 77.2285, "Minto Bridge"),
-            (28.6304, 77.2425, "ITO Crossing"),
-            (28.5910, 77.1610, "Dhaula Kuan"),
-            (28.6139, 76.9830, "Najafgarh"),
-            (28.6675, 77.2282, "Kashmere Gate"),
-            (28.5244, 77.2618, "Okhla"),
-            (28.6436, 77.1565, "Shadipur"),
-            (28.5355, 77.1420, "Munirka"),
-            (28.7041, 77.1025, "Pitampura"),
-            (28.5494, 77.2117, "Green Park"),
-            (28.6219, 77.0878, "Janakpuri"),
-            (28.5550, 77.2562, "Kalkaji"),
-            (28.5273, 77.2177, "Saket"),
-            (28.6406, 77.3060, "Preet Vihar"),
-            (28.6505, 77.1711, "Pushta Road"),
-            (28.6288, 77.2847, "Laxmi Nagar"),
-            (28.5700, 77.3200, "Noida Sec-18 Area"),
-            (28.4595, 77.0266, "Gurgaon Cyber City Area"),
-            (28.7000, 77.2800, "Shahdara"),
-            (28.6900, 77.1900, "Model Town"),
-            (28.6000, 77.2300, "Lodhi Road"),
-            (28.5800, 77.2300, "Jangpura"),
-            (28.5500, 77.2000, "Hauz Khas"),
-            (28.5200, 77.2300, "Khanpur"),
-            (28.4900, 77.3000, "Badarpur"),
-            (28.6400, 77.1200, "Kirti Nagar"),
-            (28.6700, 77.1200, "Punjabi Bagh"),
-            (28.7300, 77.1100, "Rohini"),
-            (28.6100, 77.0400, "Dwarka"),
-            (28.5900, 77.0700, "Palam"),
-            (28.6300, 77.3400, "Vaishali"),
-            (28.6500, 77.3700, "Indirapuram"),
-            (28.7500, 77.2000, "Burari"),
-            (28.6600, 77.2100, "Civil Lines"),
-            (28.6400, 77.2100, "Paharganj"),
-            (28.6200, 77.2000, "Connaught Place"),
-            (28.5900, 77.1900, "Chanakyapuri"),
-            (28.5700, 77.1700, "RK Puram"),
-            (28.5400, 77.1600, "Vasant Vihar"),
-            (28.5300, 77.1200, "Mahipalpur"),
-            (28.6800, 77.0600, "Nangloi"),
-            (28.6600, 77.0300, "Peeragarhi"),
-            (28.6200, 77.1000, "Mayapuri"),
-            (28.4800, 77.1800, "Chattarpur")
+        # Dictionary of major Delhi areas with approximate coordinates and DRAINAGE CAPACITY (mm)
+        # Usage: (lat, lng, name, drainage_capacity_mm)
+        # Default capacity is ~50mm. VVIP areas ~70-80mm. Critical points ~20-30mm.
+        self.known_locations = [
+            (28.6330, 77.2285, "Minto Bridge", 25),     # Critical Sump
+            (28.6304, 77.2425, "ITO Crossing", 35),     # High Traffic, Low Drainage
+            (28.5910, 77.1610, "Dhaula Kuan", 45),      # Slope runoff
+            (28.6139, 76.9830, "Najafgarh", 25),        # Rural/Drainage issues
+            (28.6675, 77.2282, "Kashmere Gate", 40),    # Old City
+            (28.5244, 77.2618, "Okhla", 30),            # Industrial
+            (28.6436, 77.1565, "Shadipur", 35),
+            (28.5355, 77.1420, "Munirka", 45),
+            (28.7041, 77.1025, "Pitampura", 55),        # Planned
+            (28.5494, 77.2117, "Green Park", 60),       # Planned
+            (28.6219, 77.0878, "Janakpuri", 55),
+            (28.5550, 77.2562, "Kalkaji", 45),
+            (28.5273, 77.2177, "Saket", 60),
+            (28.6406, 77.3060, "Preet Vihar", 50),
+            (28.6505, 77.1711, "Pushta Road", 20),      # Low lying
+            (28.6288, 77.2847, "Laxmi Nagar", 30),      # Congested
+            (28.5700, 77.3200, "Noida Sec-18 Area", 40),
+            (28.4595, 77.0266, "Gurgaon Cyber City Area", 45),
+            (28.7000, 77.2800, "Shahdara", 30),
+            (28.6900, 77.1900, "Model Town", 55),
+            (28.6000, 77.2300, "Lodhi Road", 75),       # VVIP
+            (28.5800, 77.2300, "Jangpura", 50),
+            (28.5500, 77.2000, "Hauz Khas", 65),
+            (28.5200, 77.2300, "Khanpur", 35),
+            (28.4900, 77.3000, "Badarpur", 35),
+            (28.6400, 77.1200, "Kirti Nagar", 50),
+            (28.6700, 77.1200, "Punjabi Bagh", 55),
+            (28.7300, 77.1100, "Rohini", 55),
+            (28.6100, 77.0400, "Dwarka", 60),           # Planned
+            (28.5900, 77.0700, "Palam", 40),
+            (28.6300, 77.3400, "Vaishali", 45),
+            (28.6500, 77.3700, "Indirapuram", 45),
+            (28.7500, 77.2000, "Burari", 25),           # Low lying
+            (28.6600, 77.2100, "Civil Lines", 65),
+            (28.6400, 77.2100, "Paharganj", 30),
+            (28.6200, 77.2000, "Connaught Place", 80),  # Top tier
+            (28.5900, 77.1900, "Chanakyapuri", 85),     # Diplomatic
+            (28.5700, 77.1700, "RK Puram", 60),
+            (28.5400, 77.1600, "Vasant Vihar", 70),
+            (28.5300, 77.1200, "Mahipalpur", 35),
+            (28.6800, 77.0600, "Nangloi", 30),
+            (28.6600, 77.0300, "Peeragarhi", 35),
+            (28.6200, 77.1000, "Mayapuri", 40),
+            (28.4800, 77.1800, "Chattarpur", 35)
         ]
+        
         
         # Find nearest known location
         min_dist = float('inf')
         nearest_name = "Unknown Area"
         
-        for known_lat, known_lng, name in known_locations:
+        for known_lat, known_lng, name, _ in self.known_locations:
             dist = np.sqrt((lat - known_lat)**2 + (lng - known_lng)**2)
             if dist < min_dist:
                 min_dist = dist
@@ -568,6 +624,32 @@ class DateBasedPredictor:
             return f"Zone near {nearest_name}"
         
         return nearest_name
+
+    def get_drainage_capacity(self, lat, lng):
+        """Get approximate drainage capacity (mm/24h) for a location"""
+        min_dist = float('inf')
+        capacity = 50.0 # Default fallback
+        
+        # Use existing known_locations table if initialized, else simple lookup
+        # Ensure known_locations is available (it's defined in get_location_name but better as class property)
+        # Re-defining here just in case get_location_name wasn't called or scope issues
+        # Actually, let's just use the same list as above. 
+        # Ideally, move known_locations to __init__ but for minimal diff, we'll access it or re-declare.
+        
+        # Accessing from self if we moved it to __init__, but we put it in get_location_name previously. 
+        # I'll move it to __init__ in a separate edit or just replicate accessing it if I assign to self.
+        
+        # Wait, I assigned it to `self.known_locations` in the previous chunk. 
+        
+        if hasattr(self, 'known_locations'):
+             for known_lat, known_lng, name, cap in self.known_locations:
+                dist = np.sqrt((lat - known_lat)**2 + (lng - known_lng)**2)
+                if dist < min_dist:
+                    min_dist = dist
+                    capacity = cap
+        
+        # Interpolate? No, nearest neighbor is fine for now.
+        return capacity
     
     def save_predictions_to_db(self, target_date, hotspots):
         """Save predictions to database"""

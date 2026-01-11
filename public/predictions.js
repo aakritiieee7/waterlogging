@@ -1,8 +1,3 @@
-/**
- * Historical Predictions Page JavaScript
- * Handles date-based waterlogging predictions display
- */
-
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3000' : '';
 
 let map = null;
@@ -18,7 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function initializeMap() {
-    // Initialize Leaflet map centered on Delhi
     map = L.map('prediction-map').setView([28.6139, 77.2090], 11);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -26,8 +20,6 @@ function initializeMap() {
         maxZoom: 18
     }).addTo(map);
 
-    // Create layer for markers using Canvas renderer for performance with 1000+ points
-    // This enables "Google Maps Traffic" style density visualization
     markersLayer = L.layerGroup({ renderer: L.canvas() }).addTo(map);
 }
 
@@ -198,6 +190,22 @@ function createPopupContent(hotspot) {
         factorsHtml += `<li>Cluster size: ${riskFactors.cluster_size} points</li>`;
     }
 
+    // Logistics HTML
+    let logisticsHtml = '';
+    if (riskFactors.logistics) {
+        const l = riskFactors.logistics;
+        logisticsHtml = `
+            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e5e7eb;">
+                <strong>🚑 Predictive Logistics:</strong>
+                <div style="font-size: 0.9em; margin-top: 5px; color: #4b5563;">
+                    <div>Nearest Pump: <span style="color: #2563eb; font-weight: 500;">${l.nearest_pump_name}</span></div>
+                    <div>Distance: ${l.distance_km} km</div>
+                    <div>Est. Response: <strong style="color: #dc2626;">${l.est_response_time_mins} mins</strong></div>
+                </div>
+            </div>
+        `;
+    }
+
     return `
         <div style="min-width: 250px;">
             <h3 style="margin: 0 0 10px 0; color: #1f2937;">${hotspot.name}</h3>
@@ -224,8 +232,10 @@ function createPopupContent(hotspot) {
                     </ul>
                 </div>
             ` : ''}
+            ${logisticsHtml}
         </div>
     `;
+
 }
 
 function displayHotspotsList(hotspots) {
